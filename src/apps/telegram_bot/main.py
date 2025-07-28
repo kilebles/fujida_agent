@@ -16,6 +16,5 @@ async def lifespan(app: FastAPI):
     await bot.delete_webhook()
     await bot.session.close()
 
-
 app = FastAPI(lifespan=lifespan)
 app.include_router(telegram_router)

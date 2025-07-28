@@ -1,7 +1,7 @@
 import datetime
 from sqlalchemy import String, DateTime, Boolean, BigInteger
 from sqlalchemy.orm import Mapped, mapped_column
-from src.db.base import Base
+from db.base import Base
 
 
 class User(Base):

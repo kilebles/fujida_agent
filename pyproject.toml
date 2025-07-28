@@ -16,6 +16,12 @@ pgvector = "^0.4.1"
 asyncpg = "^0.30.0"
 alembic = "^1.16.4"
 sqlalchemy = "^2.0.41"
+python-dotenv = "^1.1.1"
+phonenumbers = "^9.0.10"
+openai = "^1.97.1"
+httpx = "^0.28.1"
+ffmpeg = "^1.4"
+pydub = "^0.25.1"
 
 [tool.poetry.group.dev.dependencies]
 

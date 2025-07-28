@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Request
 from aiogram import types
 
-from .dispatcher import bot, dp
+from apps.telegram_bot.dispatcher import bot, dp
 
 router = APIRouter()
 
