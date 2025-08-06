@@ -17,4 +17,4 @@ async def lifespan(app: FastAPI):
     await bot.session.close()
 
 app = FastAPI(lifespan=lifespan)
-app.include_router(telegram_router, prefix="")
+app.include_router(telegram_router)
