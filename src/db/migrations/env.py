@@ -3,9 +3,18 @@ import os
 import sys
 from logging.config import fileConfig
 
+
 from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
+from alembic.autogenerate import renderers
+from pgvector.sqlalchemy import Vector
+
+
+@renderers.dispatch_for(Vector)
+def render_vector(type_, autogen_context):
+    return f"Vector({type_.dimensions})"
+
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.getcwd(), "src")))
 
@@ -23,6 +32,7 @@ target_metadata = Base.metadata
 
 def get_url():
     return os.getenv("DATABASE_URL")
+
 
 def run_migrations_offline():
     url = get_url()
@@ -64,3 +74,5 @@ if context.is_offline_mode():
     run_migrations_offline()
 else:
     run_migrations_online()
+
+

@@ -11,6 +11,9 @@ AudioSegment.converter = which("ffmpeg")
 
 
 async def transcribe_voice(message: Message) -> str:
+    """
+    Транскрибация голосовых сообщений с помощью ffmpeg и whisper.
+    """
     file_info = await message.bot.get_file(message.voice.file_id)
     file_url = f"https://api.telegram.org/file/bot{message.bot.token}/{file_info.file_path}"
 

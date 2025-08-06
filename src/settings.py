@@ -4,7 +4,7 @@ from typing import Literal
 
 class Settings(BaseSettings):  
     ENV: Literal["dev", "prod"] = "dev"
-    
+
     TELEGRAM_BOT_TOKEN: str
     OPENAI_API_KEY: str | None = None
     WEBHOOK_URL: str
