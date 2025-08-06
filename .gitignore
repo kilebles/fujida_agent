@@ -2,8 +2,6 @@
 venv/
 .venv/
 .ruff_cache/
-faq.csv
-models.json
 
 .env
 .coverage
