@@ -27,15 +27,12 @@ def upgrade() -> None:
     op.create_table(
         'device_aliases',
         sa.Column('id', sa.Integer(), primary_key=True),
-        sa.Column('device_id', sa.Integer(), sa.ForeignKey('devices.id', ondelete='CASCADE'), nullable=False, index=True),
+        sa.Column('device_id', sa.Integer(), sa.ForeignKey('devices.id', ondelete='CASCADE'), nullable=False),
         sa.Column('alias', sa.String(), nullable=False),
     )
 
-    op.create_unique_constraint(
-        'uq_device_aliases_device_alias',
-        'device_aliases',
-        ['device_id', 'alias'],
-    )
+    op.create_index('ix_device_aliases_device_id', 'device_aliases', ['device_id'], unique=False)
+    op.create_unique_constraint('uq_device_aliases_device_alias', 'device_aliases', ['device_id', 'alias'])
 
     op.execute("""
         CREATE INDEX ix_device_aliases_alias_trgm
@@ -43,11 +40,20 @@ def upgrade() -> None:
         USING gin (alias gin_trgm_ops)
     """)
 
+    op.execute("""
+        CREATE INDEX idx_devices_embedding_ivfflat
+        ON devices
+        USING ivfflat (embedding vector_cosine_ops)
+        WITH (lists = 100)
+    """)
+
     op.alter_column('devices', 'description', server_default=None)
 
 
 def downgrade() -> None:
-    op.drop_index('ix_device_aliases_alias_trgm', table_name='device_aliases')
+    op.execute("DROP INDEX IF EXISTS idx_devices_embedding_ivfflat")
+    op.execute("DROP INDEX IF EXISTS ix_device_aliases_alias_trgm")
+    op.drop_index('ix_device_aliases_device_id', table_name='device_aliases')
     op.drop_constraint('uq_device_aliases_device_alias', 'device_aliases', type_='unique')
     op.drop_table('device_aliases')
     op.drop_table('devices')

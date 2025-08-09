@@ -40,9 +40,9 @@ services:
     volumes:
       - .:/app:delegated
     working_dir: /app
-    dns:
-      - 8.8.8.8
-      - 1.1.1.1
+    # dns:
+    #   - 8.8.8.8
+    #   - 1.1.1.1
 
 volumes:
   pgdata:

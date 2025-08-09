@@ -11,7 +11,7 @@ from apps.knowledge_base.prompt_template import build_knowledge_prompt
 async def search_similar_faqs(
     embedding: list[float],
     session: AsyncSession,
-    top_n: int = 5  # Кол-во подходящих вопросов для контекста
+    top_n: int = 5,
 ) -> list[FAQEntry]:
     stmt = (
         select(FAQEntry)
@@ -28,11 +28,11 @@ async def build_context(faqs: list[FAQEntry]) -> str:
 
 async def generate_faq_response(user_message: str) -> str:
     """
-    Генерирует ответ от OpenAI на основе базы знаний и переданного сообщения.
+    Генерирует ответ на основе базы знаний и сообщения.
     """
     embedding_response = await openai_client.embeddings.create(
         input=user_message,
-        model="text-embedding-3-large"
+        model="text-embedding-3-small",
     )
     query_embedding = embedding_response.data[0].embedding
 
@@ -43,7 +43,6 @@ async def generate_faq_response(user_message: str) -> str:
         return "Не удалось найти подходящую информацию в базе знаний."
 
     context = await build_context(faqs)
-
     prompt = build_knowledge_prompt(context, user_message)
 
     response = await openai_client.chat.completions.create(
