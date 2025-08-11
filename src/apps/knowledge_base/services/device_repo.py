@@ -22,3 +22,13 @@ class DeviceRepo:
         stmt = select(Device.id, Device.model)
         res = await self.session.execute(stmt)
         return res.all()
+
+    async def get_by_models(self, models: Sequence[str]) -> Sequence[Device]:
+        if not models:
+            return []
+        stmt = select(Device).where(Device.model.in_(models))
+        res = await self.session.execute(stmt)
+        rows = list(res.scalars().all())
+        order = {m: i for i, m in enumerate(models)}
+        rows.sort(key=lambda d: order.get(d.model, 10**9))
+        return rows
