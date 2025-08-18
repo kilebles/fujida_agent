@@ -1,15 +1,16 @@
-import logging
-from fastapi import FastAPI
 from contextlib import asynccontextmanager
-from aiogram import types
+
+from fastapi import FastAPI
 
 from settings import config
 from apps.telegram_bot.dispatcher import dp, bot
 from apps.telegram_bot.router import router as telegram_router
 from apps.telegram_bot.commands.start import set_default_commands
+from logger import setup_logging, get_logger
+from logger.middlewares.fastapi import RequestContextMiddleware, AccessLogMiddleware
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+setup_logging()
+logger = get_logger(__name__)
 
 
 @asynccontextmanager
@@ -24,4 +25,6 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+app.add_middleware(RequestContextMiddleware)
+app.add_middleware(AccessLogMiddleware)
 app.include_router(telegram_router)

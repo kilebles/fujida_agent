@@ -1,7 +1,5 @@
 import json
 import asyncio
-import logging
-
 from pathlib import Path
 from typing import Iterable
 
@@ -12,8 +10,10 @@ from db.session import async_session_maker
 from utils.text import normalize
 from db.models.devices import Device, DeviceAlias
 from common.openai_client import openai_client
+from logger import setup_logging, get_logger
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+setup_logging()
+logger = get_logger(__name__)
 
 JSON_PATH = Path("src/common/devices.json")
 EMBEDDING_MODEL = "text-embedding-3-small"
@@ -27,13 +27,6 @@ def clean_text(text: str | None) -> str:
         return ""
     value = str(text).strip()
     return value if value.lower() != "nan" else ""
-
-
-def build_embedding_input(model: str, description: str) -> str:
-    """
-    Формирует компактный текст для эмбеддинга.
-    """
-    return f"Модель: {model}\nОписание: {description}"
 
 
 async def get_embedding(text: str) -> list[float]:
@@ -81,9 +74,9 @@ async def upsert_aliases(session: AsyncSession, device_id: int, aliases: list[st
 
 async def import_devices() -> None:
     """
-    Импорт моделей устройств из JSON с нормализацией алиасов и обновлением эмбеддингов.
+    Импорт моделей устройств из JSON с нормализацией алиасов и раздельными эмбеддингами.
     """
-    logging.info("Начат импорт моделей устройств из JSON")
+    logger.info("Начат импорт моделей устройств из JSON")
     with JSON_PATH.open("r", encoding="utf-8") as f:
         data = json.load(f)
 
@@ -92,7 +85,7 @@ async def import_devices() -> None:
             for entry in data:
                 model = clean_text(entry.get("model"))
                 if not model:
-                    logging.warning("Пропущена модель без названия")
+                    logger.warning("Пропущена модель без названия", extra={"entry": entry})
                     continue
 
                 description = clean_text(entry.get("description"))
@@ -102,12 +95,16 @@ async def import_devices() -> None:
                 q = await session.execute(select(Device).where(Device.model == model))
                 existing = q.scalar_one_or_none()
 
-                embedding = await get_embedding(build_embedding_input(model, description))
+                model_vec, desc_vec = await asyncio.gather(
+                    get_embedding(model),
+                    get_embedding(description),
+                )
 
                 if existing:
                     existing.description = description
                     existing.information = information
-                    existing.embedding = embedding
+                    existing.model_name_embedding = model_vec
+                    existing.description_embedding = desc_vec
                     device = existing
                     action = "Обновляется"
                 else:
@@ -115,16 +112,17 @@ async def import_devices() -> None:
                         model=model,
                         description=description,
                         information=information,
-                        embedding=embedding,
+                        model_name_embedding=model_vec,
+                        description_embedding=desc_vec,
                     )
                     session.add(device)
                     await session.flush()
                     action = "Добавлена новая"
 
                 await upsert_aliases(session, device.id, aliases)
-                logging.info("%s модель: %s", action, model)
+                logger.info("%s модель: %s", action, model)
 
-    logging.info("Импорт моделей завершён")
+    logger.info("Импорт моделей завершён")
 
 
 if __name__ == "__main__":

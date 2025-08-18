@@ -1,34 +1,41 @@
-from typing import Sequence
+from __future__ import annotations
+
+from typing import List, Tuple
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.models.devices import Device, DeviceAlias
+from db.models import devices as devices_models
 
 
 class DeviceRepo:
-    """Доступ к устройствам и алиасам."""
+    """
+    Репозиторий устройств и их алиасов. Источник данных — БД.
+    """
 
     def __init__(self, session: AsyncSession) -> None:
-        self.session = session
+        self._session = session
+        self._device_model = getattr(devices_models, "Device", None)
+        self._alias_model = getattr(devices_models, "DeviceAlias", None)
 
-    async def list_alias_pairs(self) -> Sequence[tuple[str, int]]:
-        """Возвращает пары (alias, device_id) для активного словаря."""
-        stmt = select(DeviceAlias.alias, DeviceAlias.device_id)
-        res = await self.session.execute(stmt)
-        return res.all()
-
-    async def list_device_titles(self) -> Sequence[tuple[int, str]]:
-        """Возвращает пары (device_id, model)."""
-        stmt = select(Device.id, Device.model)
-        res = await self.session.execute(stmt)
-        return res.all()
-
-    async def get_by_models(self, models: Sequence[str]) -> Sequence[Device]:
-        if not models:
+    async def list_device_titles(self) -> List[Tuple[int, str]]:
+        """
+        Возвращает пары (device_id, модель) из БД.
+        """
+        if not self._device_model:
             return []
-        stmt = select(Device).where(Device.model.in_(models))
-        res = await self.session.execute(stmt)
-        rows = list(res.scalars().all())
-        order = {m: i for i, m in enumerate(models)}
-        rows.sort(key=lambda d: order.get(d.model, 10**9))
-        return rows
+        res = await self._session.execute(
+            select(self._device_model.id, self._device_model.model)
+        )
+        return [(int(did), str(model)) for did, model in res.all()]
+
+    async def list_alias_pairs(self) -> List[Tuple[str, int]]:
+        """
+        Возвращает пары (alias, device_id) из БД.
+        """
+        if not self._alias_model:
+            return []
+        res = await self._session.execute(
+            select(self._alias_model.alias, self._alias_model.device_id)
+        )
+        return [(str(alias), int(device_id)) for alias, device_id in res.all()]
