@@ -1,52 +1,76 @@
+from __future__ import annotations
+
+from typing import Any, Dict, List
+
 from sqlalchemy import select, func, cast
 from sqlalchemy.ext.asyncio import AsyncSession
 from pgvector.sqlalchemy import Vector
 
-from db.session import async_session_maker
 from db.models.faq_entry import FAQEntry
-from common.openai_client import openai_client
-from apps.knowledge_base.prompt_template import build_knowledge_prompt
+from common.openai_client import ensure_openai_client
 
 
-async def search_similar_faqs(
-    embedding: list[float],
-    session: AsyncSession,
-    top_n: int = 5,
-) -> list[FAQEntry]:
-    stmt = (
-        select(FAQEntry)
-        .order_by(func.cosine_distance(FAQEntry.embedding, cast(embedding, Vector)))
-        .limit(top_n)
-    )
-    result = await session.execute(stmt)
-    return result.scalars().all()
+_EMBEDDING_MODEL = "text-embedding-3-small"
+_faq_search_cached: "FAQSearch | None" = None
 
 
-async def build_context(faqs: list[FAQEntry]) -> str:
-    return "\n\n".join(f"Q: {faq.question}\nA: {faq.answer}" for faq in faqs)
-
-
-async def generate_faq_response(user_message: str) -> str:
+class FAQSearch:
     """
-    Генерирует ответ на основе базы знаний и сообщения.
+    Семантический поиск по FAQ с выдачей топ-N вопросов и ответов.
     """
-    embedding_response = await openai_client.embeddings.create(
-        input=user_message,
-        model="text-embedding-3-small",
-    )
-    query_embedding = embedding_response.data[0].embedding
 
-    async with async_session_maker() as session:
-        faqs = await search_similar_faqs(query_embedding, session)
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
 
-    if not faqs:
-        return "Не удалось найти подходящую информацию в базе знаний."
+    async def _embed(self, text: str) -> list[float]:
+        """
+        Возвращает эмбеддинг текста.
+        """
+        client = await ensure_openai_client()
+        r = await client.embeddings.create(input=text, model=_EMBEDDING_MODEL)
+        return r.data[0].embedding
 
-    context = await build_context(faqs)
-    prompt = build_knowledge_prompt(context, user_message)
+    async def _search_similar(self, embedding: list[float], top_n: int) -> List[FAQEntry]:
+        """
+        Возвращает топ-N FAQ по косинусной близости.
+        """
+        stmt = (
+            select(FAQEntry)
+            .order_by(func.cosine_distance(FAQEntry.embedding, cast(embedding, Vector)))
+            .limit(top_n)
+        )
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())
 
-    response = await openai_client.chat.completions.create(
-        model="gpt-4o",
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return response.choices[0].message.content
+    async def top_faq_json(self, user_message: str, *, top_n: int = 3) -> Dict[str, Any]:
+        """
+        Возвращает JSON с топ-N похожими вопросами и ответами.
+        """
+        emb = await self._embed(user_message)
+        rows = await self._search_similar(emb, top_n)
+        return {
+            "top_questions": [r.question for r in rows],
+            "top_answers": [r.answer for r in rows],
+        }
+
+
+async def get_faq_search(session: AsyncSession) -> FAQSearch:
+    """
+    Создаёт сервис FAQSearch на сессии БД.
+    """
+    return FAQSearch(session)
+
+
+def get_faq_search_cached() -> FAQSearch | None:
+    """
+    Возвращает кешированный инстанс FAQSearch.
+    """
+    return _faq_search_cached
+
+
+def set_faq_search_cached(svc: FAQSearch | None) -> None:
+    """
+    Кладёт сервис FAQSearch в кеш.
+    """
+    global _faq_search_cached
+    _faq_search_cached = svc

@@ -6,37 +6,36 @@ from db.base import Base
 
 
 class Device(Base):
-    __tablename__ = 'devices'
+    __tablename__ = "devices"
     __table_args__ = (
-        UniqueConstraint('model', name='uq_devices_model'),
+        UniqueConstraint("model", name="uq_devices_model"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     model: Mapped[str] = mapped_column(String, nullable=False)
-    description: Mapped[str] = mapped_column(String, nullable=False, default='')
+    description: Mapped[str] = mapped_column(String, nullable=False, default="")
     information: Mapped[dict] = mapped_column(JSONB, nullable=False)
-    model_name_embedding: Mapped[list[float]] = mapped_column(Vector(1536), nullable=False)
     description_embedding: Mapped[list[float]] = mapped_column(Vector(1536), nullable=False)
 
-    aliases: Mapped[list['DeviceAlias']] = relationship(
-        back_populates='device',
-        cascade='all, delete-orphan',
-        lazy='selectin',
+    aliases: Mapped[list["DeviceAlias"]] = relationship(
+        back_populates="device",
+        cascade="all, delete-orphan",
+        lazy="selectin",
     )
 
 
 class DeviceAlias(Base):
-    __tablename__ = 'device_aliases'
+    __tablename__ = "device_aliases"
     __table_args__ = (
-        UniqueConstraint('device_id', 'alias', name='uq_device_aliases_device_alias'),
+        UniqueConstraint("device_id", "alias", name="uq_device_aliases_device_alias"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     device_id: Mapped[int] = mapped_column(
-        ForeignKey('devices.id', ondelete='CASCADE'),
+        ForeignKey("devices.id", ondelete="CASCADE"),
         index=True,
         nullable=False,
     )
     alias: Mapped[str] = mapped_column(String, nullable=False)
 
-    device: Mapped[Device] = relationship(back_populates='aliases')
+    device: Mapped[Device] = relationship(back_populates="aliases")

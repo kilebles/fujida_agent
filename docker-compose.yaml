@@ -32,15 +32,26 @@ services:
         condition: service_healthy
     env_file:
       - .env
-    command: ["uvicorn", "src.apps.telegram_bot.main:app", "--host", "0.0.0.0", "--port", "8080", "--no-access-log"]
+    environment:
+      PYTHONUNBUFFERED: "1"
+    command:
+      [
+        "uvicorn",
+        "src.apps.telegram_bot.main:app",
+        "--host","0.0.0.0",
+        "--port","8080",
+        "--no-access-log",
+        "--loop","uvloop",
+        "--http","httptools"
+      ]
     ports:
-      - 8080:8080
+      - "8080:8080"
     volumes:
       - .:/app:delegated
     working_dir: /app
-    # dns:
-    #   - 8.8.8.8
-    #   - 1.1.1.1
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     logging:
       driver: json-file
       options:

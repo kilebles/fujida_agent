@@ -74,7 +74,7 @@ async def upsert_aliases(session: AsyncSession, device_id: int, aliases: list[st
 
 async def import_devices() -> None:
     """
-    Импорт моделей устройств из JSON с нормализацией алиасов и раздельными эмбеддингами.
+    Импорт моделей устройств из JSON с нормализацией алиасов и эмбеддингами описаний.
     """
     logger.info("Начат импорт моделей устройств из JSON")
     with JSON_PATH.open("r", encoding="utf-8") as f:
@@ -95,15 +95,11 @@ async def import_devices() -> None:
                 q = await session.execute(select(Device).where(Device.model == model))
                 existing = q.scalar_one_or_none()
 
-                model_vec, desc_vec = await asyncio.gather(
-                    get_embedding(model),
-                    get_embedding(description),
-                )
+                desc_vec = await get_embedding(description)
 
                 if existing:
                     existing.description = description
                     existing.information = information
-                    existing.model_name_embedding = model_vec
                     existing.description_embedding = desc_vec
                     device = existing
                     action = "Обновляется"
@@ -112,7 +108,6 @@ async def import_devices() -> None:
                         model=model,
                         description=description,
                         information=information,
-                        model_name_embedding=model_vec,
                         description_embedding=desc_vec,
                     )
                     session.add(device)

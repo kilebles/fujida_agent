@@ -19,13 +19,15 @@ sqlalchemy = "^2.0.41"
 python-dotenv = "^1.1.1"
 phonenumbers = "^9.0.10"
 openai = "^1.97.1"
-httpx = "^0.28.1"
+httpx = {extras = ["http2"], version = "^0.28.1"}
 ffmpeg = "^1.4"
 pydub = "^0.25.1"
 pyahocorasick = "^2.2.0"
 rapidfuzz = "^3.13.0"
 pytest = "^8.4.1"
 pytest-asyncio = "^1.1.0"
+uvloop = "^0.21.0"
+httptools = "^0.6.4"
 
 [tool.poetry.group.dev.dependencies]
 

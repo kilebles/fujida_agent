@@ -16,6 +16,7 @@ FAMILY_BASES: Dict[str, set[str]] = {
     "karma": {"bliss", "pro", "one", "slim", "hara", "s", "duos", "blik", "hit"},
 }
 GENERIC_MODS = {"max", "duo", "ai", "wifi", "se"}
+MOD_ORDER = ("s", "max", "se", "ai", "duo", "wifi")
 
 
 @dataclass(frozen=True)
@@ -207,25 +208,33 @@ class StructuredAliasResolver:
 
     def _order_for_query(self, ids: set[int], q_mods: set[str]) -> List[int]:
         """
-        Сортирует кандидатов по числу модификаторов и лишним модам.
+        Сортирует кандидатов по покрытию модификаторов.
         """
-        def sort_key(device_id: int) -> tuple[int, int, int, int]:
+        def conflict_score(mods: frozenset[str]) -> int:
+            has_conflict = ("s" in q_mods and "max" in mods) or ("max" in q_mods and "s" in mods)
+            return 1 if has_conflict else 0
+
+        def sort_key(device_id: int) -> tuple[int, int, int, int, int, int]:
             di = self._by_id[device_id]
+            matched = len(di.mods & q_mods)
+            missing = len(q_mods - di.mods)
             extra = len(di.mods - q_mods)
+            conf = conflict_score(di.mods)
             tokens_len = len(self._norm_ascii(di.title).split())
-            return (len(di.mods), extra, tokens_len, device_id)
+            return (missing, conf, extra, -matched, tokens_len, device_id)
 
         return sorted(ids, key=sort_key)
 
     def _expansions_for_index(self, di: DeviceIndex) -> List[str]:
         """
-        Генерирует алиасы для устройства по префиксам модификаторов.
+        Генерирует алиасы для устройства по детерминированным префиксам модификаторов.
         """
         if not di.base:
             return []
         family = di.family
         base = di.base
-        mods = list(di.mods)
+        mods = sorted(di.mods, key=lambda m: MOD_ORDER.index(m) if m in MOD_ORDER else 999)
+
         with_brand: List[str] = []
         without_brand: List[str] = []
 
@@ -303,6 +312,8 @@ class StructuredAliasResolver:
         Возвращает множество модификаторов с учётом семейства.
         """
         if family == "zoom":
+            return GENERIC_MODS | {"s"}
+        if family is None:
             return GENERIC_MODS | {"s"}
         return GENERIC_MODS
 
