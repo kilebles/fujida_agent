@@ -1,16 +1,16 @@
-import json
 import asyncio
+import json
 from pathlib import Path
 from typing import Iterable
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.session import async_session_maker
-from utils.text import normalize
 from db.models.devices import Device, DeviceAlias
-from common.openai_client import openai_client
-from logger import setup_logging, get_logger
+from db.session import async_session_maker
+from logger import get_logger, setup_logging
+from utils.text import normalize
+from common.openai_client import ensure_openai_client, close_openai_client
 
 setup_logging()
 logger = get_logger(__name__)
@@ -33,8 +33,12 @@ async def get_embedding(text: str) -> list[float]:
     """
     Возвращает эмбеддинг текста фиксированной длины 1536.
     """
-    r = await openai_client.embeddings.create(input=text, model=EMBEDDING_MODEL)
-    return r.data[0].embedding
+    client = await ensure_openai_client()
+    resp = await client.embeddings.create(
+        model=EMBEDDING_MODEL,
+        input=text or "",
+    )
+    return resp.data[0].embedding
 
 
 def unique_normalized_aliases(model: str, aliases: Iterable[str]) -> list[str]:
@@ -56,7 +60,11 @@ def unique_normalized_aliases(model: str, aliases: Iterable[str]) -> list[str]:
     return out
 
 
-async def upsert_aliases(session: AsyncSession, device_id: int, aliases: list[str]) -> None:
+async def upsert_aliases(
+    session: AsyncSession,
+    device_id: int,
+    aliases: list[str],
+) -> None:
     """
     Идемпотентно добавляет алиасы устройства.
     """
@@ -74,7 +82,7 @@ async def upsert_aliases(session: AsyncSession, device_id: int, aliases: list[st
 
 async def import_devices() -> None:
     """
-    Импорт моделей устройств из JSON с нормализацией алиасов и эмбеддингами описаний.
+    Импорт моделей устройств из JSON с нормализацией и эмбеддингами описаний.
     """
     logger.info("Начат импорт моделей устройств из JSON")
     with JSON_PATH.open("r", encoding="utf-8") as f:
@@ -85,14 +93,21 @@ async def import_devices() -> None:
             for entry in data:
                 model = clean_text(entry.get("model"))
                 if not model:
-                    logger.warning("Пропущена модель без названия", extra={"entry": entry})
+                    logger.warning(
+                        "Пропущена модель без названия",
+                        extra={"entry": entry},
+                    )
                     continue
 
                 description = clean_text(entry.get("description"))
                 information = entry.get("information") or {}
-                aliases = unique_normalized_aliases(model, entry.get("aliases") or [])
+                aliases = unique_normalized_aliases(
+                    model, entry.get("aliases") or []
+                )
 
-                q = await session.execute(select(Device).where(Device.model == model))
+                q = await session.execute(
+                    select(Device).where(Device.model == model)
+                )
                 existing = q.scalar_one_or_none()
 
                 desc_vec = await get_embedding(description)
@@ -121,4 +136,7 @@ async def import_devices() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(import_devices())
+    try:
+        asyncio.run(import_devices())
+    finally:
+        asyncio.run(close_openai_client())
