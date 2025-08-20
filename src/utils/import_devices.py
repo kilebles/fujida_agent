@@ -135,8 +135,18 @@ async def import_devices() -> None:
     logger.info("Импорт моделей завершён")
 
 
-if __name__ == "__main__":
+async def main() -> None:
+    """
+    Запускает импорт и корректно закрывает HTTP-клиент в рамках одного event loop.
+    """
     try:
-        asyncio.run(import_devices())
+        await import_devices()
     finally:
-        asyncio.run(close_openai_client())
+        try:
+            await close_openai_client()
+        except RuntimeError:
+            pass
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
