@@ -12,11 +12,21 @@ def _http2_available() -> bool:
 
 
 def _build_limits() -> httpx.Limits:
-    return httpx.Limits(max_connections=200, max_keepalive_connections=100, keepalive_expiry=60.0)
+    return httpx.Limits(
+        max_connections=200,
+        max_keepalive_connections=100,
+        keepalive_expiry=60.0,
+    )
 
 
 def _build_timeout() -> httpx.Timeout:
-    return httpx.Timeout(timeout=40.0, connect=10.0, read=30.0, write=10.0, pool=10.0)
+    return httpx.Timeout(
+        timeout=40.0,
+        connect=10.0,
+        read=30.0,
+        write=10.0,
+        pool=10.0,
+    )
 
 
 async def init_openai_client() -> None:
@@ -52,18 +62,14 @@ async def close_openai_client() -> None:
 
 async def warmup_openai() -> None:
     """
-    Мягкий прогрев соединения без жёстких таймаутов.
+    Мягкий прогрев соединения.
     """
     await init_openai_client()
     try:
         client = await ensure_openai_client()
-        await client.chat.completions.create(
-            model="gpt-4o-mini",
-            temperature=0,
-            max_tokens=4,
-            response_format={"type": "json_object"},
-            messages=[{"role": "system", "content": "return JSON"}, {"role": "user", "content": "ping"}],
-            timeout=6.0,
+        await client.responses.create(
+            model="gpt-4.1-mini",
+            input=[{"role": "user", "content": "ping"}],
         )
     except Exception:
         pass

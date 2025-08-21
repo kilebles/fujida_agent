@@ -20,6 +20,9 @@ from apps.knowledge_base.services.faq_search import (
     set_faq_search_cached,
 )
 from apps.knowledge_base.services.device_repo import DeviceRepo
+from logger import get_logger
+
+logger = get_logger(__name__)
 
 PROMPT = (
     "Ты маршрутизатор запросов о продуктах Fujida."
@@ -189,6 +192,26 @@ async def _route_with_llm(user_query: str) -> Dict[str, Any]:
     return parsed
 
 
+def _summarize_result(result: Dict[str, Any]) -> Dict[str, Any]:
+    out: Dict[str, Any] = {
+        "route": result.get("route"),
+        "user_query": result.get("user_query"),
+        "models": result.get("models", []),
+        "features": result.get("features", []),
+    }
+    if "found_models" in result:
+        out["found_models"] = [
+            m.get("model") if isinstance(m, dict) else m for m in result["found_models"]
+        ]
+    if "information_diff" in result and result["information_diff"]:
+        out["information_diff"] = {
+            k: list(v.keys()) for k, v in result["information_diff"].items()
+        }
+    if "top_questions" in result:
+        out["top_questions"] = result["top_questions"]
+    return out
+
+
 async def route_intent_llm(user_query: str) -> Dict[str, Any]:
     base_json = await _route_with_llm(user_query)
     route = base_json.get("route")
@@ -206,6 +229,8 @@ async def route_intent_llm(user_query: str) -> Dict[str, Any]:
         base_json["information_diff"] = {}
         base_json["top_questions"] = faq["top_questions"]
         base_json["top_answers"] = faq["top_answers"]
+        summary = _summarize_result(base_json)
+        logger.info("IntentRouter result: %s", summary)
         return base_json
 
     if route == "by_specs" and features:
@@ -221,11 +246,15 @@ async def route_intent_llm(user_query: str) -> Dict[str, Any]:
         )
         base_json["found_models"] = [{"model": m, "description": d} for m, d, _ in rows]
         base_json["information_diff"] = {}
+        summary = _summarize_result(base_json)
+        logger.info("IntentRouter result: %s", summary)
         return base_json
 
     if route == "by_specs" and not features:
         base_json["found_models"] = []
         base_json["information_diff"] = {}
+        summary = _summarize_result(base_json)
+        logger.info("IntentRouter result: %s", summary)
         return base_json
 
     svc = get_alias_search_cached()
@@ -266,13 +295,12 @@ async def route_intent_llm(user_query: str) -> Dict[str, Any]:
     else:
         base_json["information_diff"] = {}
 
+    summary = _summarize_result(base_json)
+    logger.info("IntentRouter result: %s", summary)
     return base_json
 
 
 async def warmup_intent_router() -> None:
-    """
-    Прогрев LLM и сервисов поиска.
-    """
     from common.openai_client import init_openai_client, warmup_openai
 
     await init_openai_client()
