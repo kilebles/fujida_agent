@@ -9,9 +9,8 @@ from pgvector.sqlalchemy import Vector
 from db.models.faq_entry import FAQEntry
 from common.openai_client import ensure_openai_client
 
-
 _EMBEDDING_MODEL = "text-embedding-3-small"
-_faq_search_cached: "FAQSearch | None" = None
+_faq_search_cached: FAQSearch | None = None
 
 
 class FAQSearch:
@@ -24,11 +23,14 @@ class FAQSearch:
 
     async def _embed(self, text: str) -> list[float]:
         """
-        Возвращает эмбеддинг текста.
+        Возвращает эмбеддинг текста фиксированной длины 1536.
         """
         client = await ensure_openai_client()
-        r = await client.embeddings.create(input=text, model=_EMBEDDING_MODEL)
-        return r.data[0].embedding
+        resp = await client.embeddings.create(
+            model=_EMBEDDING_MODEL,
+            input=text or "",
+        )
+        return resp.data[0].embedding
 
     async def _search_similar(self, embedding: list[float], top_n: int) -> List[FAQEntry]:
         """

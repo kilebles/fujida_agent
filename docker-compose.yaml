@@ -49,9 +49,9 @@ services:
     volumes:
       - .:/app:delegated
     working_dir: /app
-    # dns:
-    #   - 1.1.1.1
-    #   - 8.8.8.8
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     logging:
       driver: json-file
       options:

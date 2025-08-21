@@ -34,7 +34,7 @@ async def handle_user_message(message: Message) -> None:
 
             client = await ensure_openai_client()
             resp = await client.chat.completions.create(
-                model="gpt-5",
+                model="gpt-5-mini",
                 messages=[{"role": "user", "content": prompt}],
             )
             final_answer = resp.choices[0].message.content or ""

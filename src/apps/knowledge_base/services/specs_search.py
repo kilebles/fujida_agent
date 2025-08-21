@@ -5,8 +5,7 @@ from typing import Iterable, List, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from apps.knowledge_base.services.device_repo import DeviceRepo
-from common.openai_client import openai_client
-
+from common.openai_client import ensure_openai_client
 
 _EMBEDDING_MODEL = "text-embedding-3-small"
 _specs_search_cached: "SpecsSearch | None" = None
@@ -24,8 +23,12 @@ class SpecsSearch:
         """
         Возвращает эмбеддинг для текста.
         """
-        r = await openai_client.embeddings.create(input=text, model=_EMBEDDING_MODEL)
-        return r.data[0].embedding
+        client = await ensure_openai_client()
+        resp = await client.embeddings.create(
+            model=_EMBEDDING_MODEL,
+            input=text or "",
+        )
+        return resp.data[0].embedding
 
     async def search(
         self,
