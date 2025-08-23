@@ -33,12 +33,11 @@ PROMPT = (
     "актуально только для route = \"by_specs\". Если в запросе встречаются характеристики,"
     "сохраняй их в естественном виде: «у каких моделей есть глонасс» остаётся «глонасс», «модели с задней камерой» остаётся «задняя камера»."
     "Технические термины типа «wifi», «128gb microsd» можно оставить латиницей."
-    "Разделяй разные модели только если в запросе явно есть разделители: запятая, «или»,"
-    "«либо», «vs», «против», «/», «|»."
+    "Разделяй разные модели только если в запросе есть разделители: запятая, «или», «хуже», «лучше», «либо», «vs», «против», «/», «|». и т.д."
     "Допустимые модификаторы моделей: max, pro, duo, ai, wifi, s, se, smart, hit, blik, bliss."
     "Исправляй ошибки в модификаторах: луо→duo, крмв→karma."
     "Кириллицу транслитерируй только в названиях моделей: зум→zoom, карма→karma, хит→hit, блисс/блис→bliss, блик→blik,"
-    "Старайся не терять 'с', когда она относится к модели: хит с→hit s"
+    "Старайся не терять 'с', когда она относится к модели: хит с→hit s, про с→pro s"
     "смарт→smart, макс→max, про→pro, дуо→duо, вайфай/вифи/ви-фи→wifi, эс/с→s, се/сэ→se, око/окко→okko"
     "Примеры классификации:"
     "  route = \"by_name\" — сравнение или выбор между конкретными моделями, а также запросы об описании или характеристиках конкретной модели:"
@@ -65,7 +64,7 @@ SPECS_MAX_DISTANCE = 0.6
 
 def _split_disjunctions(text: str) -> List[str]:
     pat = re.compile(
-        r"\b(от|и|или|либо|vs\.?|против)\b|[\/\|,;]",
+        r"\b(от|и|или|либо|vs\.?|против|хуже|лучше)\b|[\/\|,;]",
         flags=re.IGNORECASE,
     )
     parts = [p.strip() for p in pat.split(text) if p]
@@ -91,13 +90,11 @@ def _norm_ascii_ru2en(s: str) -> str:
         "блик": "blik",
         "смарт": "smart",
         "макс": "max",
-        "про": "pro",
         "дуо": "duo",
         "вайфай": "wifi",
         "вифи": "wifi",
         "ви-фи": "wifi",
         "эс": "s",
-        "с": "s",
         "се": "se",
         "сэ": "se",
     }
@@ -213,6 +210,9 @@ def _summarize_result(result: Dict[str, Any]) -> Dict[str, Any]:
 
 
 async def route_intent_llm(user_query: str) -> Dict[str, Any]:
+    """
+    Маршрутизация запроса пользователя и подготовка результата для последующей генерации ответа.
+    """
     base_json = await _route_with_llm(user_query)
     route = base_json.get("route")
     models = base_json.get("models", []) or []
@@ -262,7 +262,11 @@ async def route_intent_llm(user_query: str) -> Dict[str, Any]:
         async with async_session_maker() as session:
             svc = await get_alias_search(session)
 
-    decisions = await svc.resolve_for_router(models, max_candidates=MAX_ALIAS_CANDIDATES)
+    queries = models or [user_query]
+    decisions = await svc.resolve_for_router(
+        queries,
+        max_candidates=MAX_ALIAS_CANDIDATES,
+    )
 
     picked: List[str] = []
     for d in decisions:
@@ -290,6 +294,7 @@ async def route_intent_llm(user_query: str) -> Dict[str, Any]:
 
     if len(picked) >= 2:
         from apps.knowledge_base.services.compare import diff_information
+
         pairs = [(m, info_map.get(m, {})) for m in picked]
         base_json["information_diff"] = diff_information(pairs, drop_equal=True)
     else:

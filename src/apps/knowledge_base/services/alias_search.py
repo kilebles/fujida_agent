@@ -308,14 +308,9 @@ class StructuredAliasResolver:
         return family, base, set(mods), all_tokens
 
     def _mods_for_family(self, family: str | None) -> set[str]:
-        """
-        Возвращает множество модификаторов с учётом семейства.
-        """
-        if family == "zoom":
-            return GENERIC_MODS | {"s"}
         if family is None:
             return GENERIC_MODS | {"s"}
-        return GENERIC_MODS
+        return GENERIC_MODS | {"s"}
 
     def _ids_to_titles(self, ids: Iterable[int]) -> List[str]:
         """
@@ -336,13 +331,36 @@ class StructuredAliasResolver:
 
     @staticmethod
     def _norm_ascii(s: str) -> str:
-        """
-        Нормализует строку: нижний регистр, без пунктуации и лишних пробелов.
-        """
         s = s.lower().replace("ё", "e")
         s = re.sub(r"[^\w\s\-+]", " ", s, flags=re.UNICODE)
         s = re.sub(r"[\s\u00A0]+", " ", s).strip()
-        return s
+        if not s:
+            return s
+        syn = {
+            "зум": "zoom",
+            "карма": "karma",
+            "хит": "hit",
+            "блис": "bliss",
+            "блисс": "bliss",
+            "блик": "blik",
+            "окко": "okko",
+            "око": "okko",
+            "смарт": "smart",
+            "макс": "max",
+            "про": "pro",
+            "дуо": "duo",
+            "вайфай": "wifi",
+            "вай фай": "wifi",
+            "вифи": "wifi",
+            "ви-фи": "wifi",
+            "эс": "s",
+            "се": "se",
+            "сэ": "se",
+            "ван": "one",
+            "уан": "one",
+        }
+        tokens = [syn.get(t, t) for t in s.split()]
+        return " ".join(tokens)
 
 
 _service: StructuredAliasResolver | None = None

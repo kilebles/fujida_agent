@@ -1,3 +1,4 @@
+import re
 import asyncio
 
 from aiogram import Router, F
@@ -18,6 +19,9 @@ router = Router()
 
 
 def split_message(text: str, limit: int = 4000) -> list[str]:
+    """
+    Делит строку на части длиной не более limit.
+    """
     parts: list[str] = []
     while text:
         parts.append(text[:limit])
@@ -25,7 +29,21 @@ def split_message(text: str, limit: int = 4000) -> list[str]:
     return parts
 
 
+def _has_visible_text(html: str) -> bool:
+    """
+    Проверяет, есть ли видимые символы после удаления тегов и пробелов.
+    """
+    if not html:
+        return False
+    plain = re.sub(r"<[^>]+>", "", html)
+    plain = plain.replace("&nbsp;", " ").strip()
+    return bool(plain)
+
+
 async def stream_to_telegram(message: Message, prompt: str) -> None:
+    """
+    Стримит ответ модели с безопасной отправкой HTML в Telegram.
+    """
     bot = message.bot
     client = await ensure_openai_client()
     sent_message: Message | None = None
@@ -54,19 +72,37 @@ async def stream_to_telegram(message: Message, prompt: str) -> None:
                     full_text.append(chunk)
                     current = "".join(full_text)
                     html = sanitize_telegram_html(current)
+                    stripped = html.strip()
+
+                    if (
+                        not _has_visible_text(html)
+                        or len(stripped) < 20
+                        or stripped in {"<b>", "<i>", "<u>", "<s>", "<code>", "<pre>"}
+                    ):
+                        last_flush = now
+                        continue
 
                     if not sent_message:
-                        stripped = html.strip()
-                        if len(stripped) < 20 or stripped in {"<b>", "<i>", "<u>", "<s>", "<code>", "<pre>"}:
-                            continue
-
-                        sent_message = await bot.send_message(
-                            chat_id=message.chat.id,
-                            text=html[:hard_limit] or "…",
-                        )
+                        try:
+                            sent_message = await bot.send_message(
+                                chat_id=message.chat.id,
+                                text=html[:hard_limit],
+                                parse_mode="HTML",
+                            )
+                        except TelegramBadRequest as e:
+                            if "text must be non-empty" in str(e).lower():
+                                last_flush = now
+                                continue
+                            raise
                     elif flood_triggered or len(html) > hard_limit:
-                        for piece in split_message(html[len("".join(full_text)) - len(chunk):], hard_limit):
-                            await bot.send_message(chat_id=message.chat.id, text=piece, parse_mode="HTML")
+                        for piece in split_message(html, hard_limit):
+                            if not _has_visible_text(piece):
+                                continue
+                            await bot.send_message(
+                                chat_id=message.chat.id,
+                                text=piece,
+                                parse_mode="HTML",
+                            )
                         sent_message = None
                         full_text = []
                         flood_triggered = True
@@ -80,7 +116,12 @@ async def stream_to_telegram(message: Message, prompt: str) -> None:
                             )
                         except (TelegramRetryAfter, TelegramBadRequest):
                             flood_triggered = True
-                            await bot.send_message(chat_id=message.chat.id, text=chunk, parse_mode="HTML")
+                            if _has_visible_text(chunk):
+                                await bot.send_message(
+                                    chat_id=message.chat.id,
+                                    text=chunk,
+                                    parse_mode="HTML",
+                                )
 
                     last_flush = now
 
@@ -91,20 +132,33 @@ async def stream_to_telegram(message: Message, prompt: str) -> None:
                 html = sanitize_telegram_html(current)
 
                 if sent_message and not flood_triggered and len(html) <= hard_limit:
-                    try:
-                        await bot.edit_message_text(
-                            chat_id=message.chat.id,
-                            message_id=sent_message.message_id,
-                            text=html,
-                            parse_mode="HTML",
-                        )
-                    except (TelegramRetryAfter, TelegramBadRequest):
-                        flood_triggered = True
-                        for piece in split_message(html, hard_limit):
-                            await bot.send_message(chat_id=message.chat.id, text=piece, parse_mode="HTML")
+                    if _has_visible_text(html):
+                        try:
+                            await bot.edit_message_text(
+                                chat_id=message.chat.id,
+                                message_id=sent_message.message_id,
+                                text=html,
+                                parse_mode="HTML",
+                            )
+                        except (TelegramRetryAfter, TelegramBadRequest):
+                            flood_triggered = True
+                            for piece in split_message(html, hard_limit):
+                                if not _has_visible_text(piece):
+                                    continue
+                                await bot.send_message(
+                                    chat_id=message.chat.id,
+                                    text=piece,
+                                    parse_mode="HTML",
+                                )
                 else:
                     for piece in split_message(html, hard_limit):
-                        await bot.send_message(chat_id=message.chat.id, text=piece, parse_mode="HTML")
+                        if not _has_visible_text(piece):
+                            continue
+                        await bot.send_message(
+                            chat_id=message.chat.id,
+                            text=piece,
+                            parse_mode="HTML",
+                        )
 
             await stream.get_final_response()
         return
@@ -122,12 +176,18 @@ async def stream_to_telegram(message: Message, prompt: str) -> None:
         input=[{"role": "user", "content": prompt}],
     )
     text = sanitize_telegram_html(resp.output_text or "")
-    for piece in split_message(text, hard_limit):
+    pieces = [p for p in split_message(text, hard_limit) if _has_visible_text(p)]
+    if not pieces:
+        pieces = ["…"]
+    for piece in pieces:
         await message.answer(piece, parse_mode="HTML")
 
 
 @router.message(F.text | F.voice)
 async def handle_user_message(message: Message) -> None:
+    """
+    Обрабатывает входящее сообщение и отвечает пользователю.
+    """
     try:
         async with ChatActionSender.typing(
             bot=message.bot,
@@ -141,10 +201,11 @@ async def handle_user_message(message: Message) -> None:
             prompt = build_prompt_for_router_payload(clean)
             logger.info(
                 "Final prompt for LLM | route=%s | user_query=%s\n--- PROMPT START ---\n%s\n--- PROMPT END ---",
-                clean.get("route"), clean.get("user_query"), prompt
+                clean.get("route"),
+                clean.get("user_query"),
+                prompt,
             )
             await stream_to_telegram(message, prompt)
-
     except Exception as e:
         logger.exception("Handler error")
         await message.answer(f"Ошибка: {type(e).__name__}: {e}")
