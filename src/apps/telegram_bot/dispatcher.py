@@ -9,7 +9,7 @@ from logger.middlewares.aiogram import TelegramContextMiddleware
 
 bot = Bot(
     token=config.TELEGRAM_BOT_TOKEN,
-    default=DefaultBotProperties(parse_mode="HTML"),
+    default=DefaultBotProperties(parse_mode="Markdown"),
 )
 
 dp = Dispatcher(storage=MemoryStorage())

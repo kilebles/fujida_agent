@@ -1,27 +1,29 @@
 from __future__ import annotations
 
-from typing import Iterable, List, Tuple
+from typing import Any, Dict, List
 
+from sqlalchemy import select, func, cast
 from sqlalchemy.ext.asyncio import AsyncSession
+from pgvector.sqlalchemy import Vector
 
-from apps.knowledge_base.services.device_repo import DeviceRepo
+from db.models.devices import Device
 from common.openai_client import ensure_openai_client
 
-_EMBEDDING_MODEL = "text-embedding-3-small"
-_specs_search_cached: "SpecsSearch | None" = None
+_EMBEDDING_MODEL = "text-embedding-3-large"
+_specs_search_cached: SpecsSearch | None = None
 
 
 class SpecsSearch:
     """
-    Поиск моделей по семантике описаний устройств с фильтрацией по характеристикам.
+    Семантический поиск по устройствам Fujida с выдачей топ-N моделей.
     """
 
-    def __init__(self, repo: DeviceRepo) -> None:
-        self._repo = repo
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
 
     async def _embed(self, text: str) -> list[float]:
         """
-        Возвращает эмбеддинг для текста.
+        Возвращает эмбеддинг текста фиксированной длины 3072.
         """
         client = await ensure_openai_client()
         resp = await client.embeddings.create(
@@ -30,49 +32,47 @@ class SpecsSearch:
         )
         return resp.data[0].embedding
 
-    async def search(
-        self,
-        features: Iterable[str],
-        top_k: int = 50,
-        max_distance: float | None = 0.28,
-    ) -> List[Tuple[str, str, float]]:
+    async def _search_similar(self, embedding: list[float], top_n: int) -> List[Device]:
         """
-        Возвращает список кортежей (model, description, distance) по заданным признакам.
+        Возвращает топ-N устройств по косинусной близости.
         """
-        parts = [str(f).strip() for f in features if str(f or "").strip()]
-        if not parts:
-            return []
-
-        query = " ".join(parts)
-        emb = await self._embed(query)
-
-        rows = await self._repo.vector_search_by_description(
-            embedding=emb,
-            features=parts,
-            top_k=top_k,
-            max_distance=max_distance,
+        stmt = (
+            select(Device)
+            .order_by(func.cosine_distance(Device.vector, cast(embedding, Vector)))
+            .limit(top_n)
         )
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())
 
-        if not rows:
-            rows = await self._repo.vector_search_by_description(
-                embedding=emb,
-                features=parts,
-                top_k=top_k,
-                max_distance=None,
-            )
-
-        return rows
+    async def top_devices_json(self, user_message: str, *, top_n: int = 10) -> Dict[str, Any]:
+        """
+        Возвращает JSON с топ-N подходящими устройствами.
+        """
+        emb = await self._embed(user_message)
+        rows = await self._search_similar(emb, top_n)
+        return {
+            "models": [r.model for r in rows],
+            "descriptions": [r.vector_text for r in rows],
+        }
 
 
 async def get_specs_search(session: AsyncSession) -> SpecsSearch:
-    repo = DeviceRepo(session)
-    return SpecsSearch(repo)
+    """
+    Создаёт сервис SpecsSearch на сессии БД.
+    """
+    return SpecsSearch(session)
 
 
 def get_specs_search_cached() -> SpecsSearch | None:
+    """
+    Возвращает кешированный инстанс SpecsSearch.
+    """
     return _specs_search_cached
 
 
 def set_specs_search_cached(svc: SpecsSearch | None) -> None:
+    """
+    Кладёт сервис SpecsSearch в кеш.
+    """
     global _specs_search_cached
     _specs_search_cached = svc

@@ -3,13 +3,12 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from settings import config
-from apps.telegram_bot.dispatcher import dp, bot
+from apps.telegram_bot.dispatcher import bot
 from apps.telegram_bot.router import router as telegram_router
 from apps.telegram_bot.commands.start import set_default_commands
 from logger import setup_logging, get_logger
 from logger.middlewares.fastapi import RequestContextMiddleware, AccessLogMiddleware
 from common.openai_client import init_openai_client, warmup_openai, close_openai_client
-from apps.knowledge_base.intent_router import warmup_intent_router
 
 setup_logging()
 logger = get_logger(__name__)
@@ -19,7 +18,6 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI):
     await init_openai_client()
     await warmup_openai()
-    await warmup_intent_router()
     logger.info("Setting webhook to: %s", config.WEBHOOK_URL)
     await bot.set_webhook(config.WEBHOOK_URL)
     await set_default_commands(bot)

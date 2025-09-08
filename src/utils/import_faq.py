@@ -1,7 +1,7 @@
 import asyncio
 import csv
-from pathlib import Path
 
+from pathlib import Path
 from sqlalchemy import select
 
 from db.session import async_session_maker
