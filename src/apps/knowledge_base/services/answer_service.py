@@ -1,4 +1,7 @@
 from common.openai_client import ensure_openai_client
+from logger.config import get_logger
+
+logger = get_logger(__name__)
 
 
 SYSTEM_PROMPT = """
@@ -7,9 +10,9 @@ SYSTEM_PROMPT = """
 Разрешённые теги: <b>, <i>, <u>, <pre>, <a>.
 Никогда не используй блоки кода (```html и т.п.).
 Никогда не упоминай внутренние данные: "алиасы", "также известно как", "vector_text".
-Не подавай виду, что ты получаешь контекст.
 Если спрашивают про устройство — используй только описание и характеристики из контекста.
 В конце добавляй гарантию и ссылки, если они есть в контексте.
+Если вопрос подразумевает перечисление моделей, выведи все, которые соответствуют запросу и попали в контекст.
 """
 
 FALLBACK_SYSTEM_PROMPT = """
@@ -44,10 +47,13 @@ class AnswerService:
             {context}
 
             Сформулируй полезный ответ для пользователя.
-            - Не придумывай информации, которой нет в контексте.
+            - Не придумывай информацию.
             - Не сокращай описания устройств.
             - Используй HTML для Telegram строго по правилам.
             """
+        logger.debug("AnswerService.generate prompt=%s", prompt)
+        logger.debug("AnswerService.generate context=%s", context)
+
         client = await ensure_openai_client()
         resp = await client.responses.create(
             model=self._model,
@@ -60,6 +66,8 @@ class AnswerService:
 
     async def fallback(self, user_message: str) -> str:
         prompt = FALLBACK_PROMPT.format(user_message=user_message)
+        logger.debug("AnswerService.fallback prompt=%s", prompt)
+
         client = await ensure_openai_client()
         resp = await client.responses.create(
             model=self._model,

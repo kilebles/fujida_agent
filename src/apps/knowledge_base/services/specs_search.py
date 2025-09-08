@@ -44,7 +44,7 @@ class SpecsSearch:
         result = await self._session.execute(stmt)
         return list(result.scalars().all())
 
-    async def top_devices_json(self, user_message: str, *, top_n: int = 40) -> Dict[str, Any]:
+    async def top_devices_json(self, user_message: str, *, top_n: int = 15) -> Dict[str, Any]:
         """
         Возвращает JSON с топ-N подходящими устройствами.
         """
