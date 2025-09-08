@@ -28,7 +28,6 @@ async def keep_typing(message: Message, stop_event: asyncio.Event):
 @router.message()
 async def handle_chat(message: Message):
     user_message = message.text.strip()
-
     typing_msg = await message.answer("📝")
 
     stop_event = asyncio.Event()
@@ -53,18 +52,18 @@ async def handle_chat(message: Message):
                     for m, d in zip(data["models"], data["descriptions"])
                 )
             else:
+                answer = await answer_service.generate(
+                    user_message,
+                    "Информации в базе нет, но можно подсказать обратиться в поддержку."
+                )
                 await delete_message(typing_msg, delay=0)
-                await message.answer("Этот вопрос не относится к FAQ или устройствам 🙃")
-                return
+                return await message.answer(sanitize_telegram_html(answer))
 
         answer = await answer_service.generate(user_message, context)
 
     finally:
         stop_event.set()
-        await typing_task
+        typing_task.cancel()
 
     await delete_message(typing_msg, delay=0)
-
-    await message.answer(
-        sanitize_telegram_html(answer),
-    )
+    await message.answer(sanitize_telegram_html(answer))

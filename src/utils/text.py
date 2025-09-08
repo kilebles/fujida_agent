@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from bs4 import BeautifulSoup
 from typing import Any, Mapping
 
@@ -19,7 +20,7 @@ ALLOWED_ATTRS = {
 
 def normalize(text: str) -> str:
     """
-    Приводит строку к единому виду
+    Приводит строку к единому виду.
     """
     x = text.lower().strip()
     x = x.replace("-", " ").replace("_", " ")
@@ -40,10 +41,20 @@ def strip_empty_fields(obj: Any) -> Any:
     return obj
 
 
+def _cleanup_markdown(text: str) -> str:
+    """
+    Убирает markdown-подобные элементы (**жирный**, # заголовки).
+    """
+    text = re.sub(r"\*\*(.*?)\*\*", r"\1", text)
+    text = re.sub(r"^#+\s*", "", text, flags=re.MULTILINE)
+    return text
+
+
 def sanitize_telegram_html(text: str) -> str:
     """
-    Удаляет неразрешённые Telegram-теги и атрибуты.
+    Убирает markdown-артефакты и чистит HTML для Telegram.
     """
+    text = _cleanup_markdown(text)
     soup = BeautifulSoup(text, "html.parser")
 
     for tag in soup.find_all(True):
