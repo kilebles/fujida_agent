@@ -25,4 +25,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    op.execute("DROP TABLE IF EXISTS device_aliases CASCADE")
     op.drop_table("devices")
