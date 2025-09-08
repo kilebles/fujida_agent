@@ -25,6 +25,16 @@ async def keep_typing(message: Message, stop_event: asyncio.Event):
             continue
 
 
+def filter_models(user_message: str, models: list[str], descriptions: list[str], aliases: list[list[str]]):
+    msg = user_message.lower()
+    selected = []
+    for m, d, a in zip(models, descriptions, aliases):
+        names = [m.lower()] + [al.lower() for al in (a or [])]
+        if any(name in msg for name in names):
+            selected.append((m, d))
+    return selected
+
+
 @router.message()
 async def handle_chat(message: Message):
     user_message = message.text.strip()
@@ -46,17 +56,31 @@ async def handle_chat(message: Message):
                 )
             elif intent == "Device":
                 search = SpecsSearch(session)
-                data = await search.top_devices_json(user_message, top_n=10)
-                context = "\n\n".join(
-                    f"Модель: {m}\nОписание: {d}"
-                    for m, d in zip(data["models"], data["descriptions"])
+                data = await search.top_devices_json(user_message, top_n=15)
+
+                selected = filter_models(
+                    user_message,
+                    data["models"],
+                    data["descriptions"],
+                    data["aliases"],
                 )
+
+                if selected:
+                    context = "\n\n".join(
+                        f"Модель: {m}\nОписание: {d}"
+                        for m, d in selected
+                    )
+                else:
+                    context = "\n\n".join(
+                        f"Модель: {m}\nОписание: {d}"
+                        for m, d in zip(data["models"][:7], data["descriptions"][:7])
+                    )
             else:
                 answer = await answer_service.fallback(user_message)
                 await delete_message(typing_msg, delay=0)
                 return await message.answer(sanitize_telegram_html(answer))
 
-        answer = await answer_service.generate(user_message, context)
+        answer = await answer_service.generate(user_message, context, intent)
 
     finally:
         stop_event.set()

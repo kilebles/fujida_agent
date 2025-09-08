@@ -25,16 +25,6 @@ async def get_embedding(text: str) -> list[float]:
     return resp.data[0].embedding
 
 
-def build_vector_text(base_text: str, aliases: list[str]) -> str:
-    """
-    Объединяет описание устройства и алиасы в общий текст.
-    """
-    if aliases:
-        aliases_text = "Также известен как: " + ", ".join(aliases)
-        return f"{base_text}\n{aliases_text}"
-    return base_text
-
-
 async def import_devices() -> None:
     logger.info("Начат импорт моделей устройств из JSON")
     with JSON_PATH.open("r", encoding="utf-8") as f:
@@ -54,22 +44,26 @@ async def import_devices() -> None:
                     )
                     continue
 
-                vector_text = build_vector_text(base_text, aliases)
+                embedding_text = base_text
+                if aliases:
+                    embedding_text += "\n" + ", ".join(aliases)
+
+                vec = await get_embedding(embedding_text)
 
                 q = await session.execute(select(Device).where(Device.model == model))
                 existing = q.scalar_one_or_none()
 
-                vec = await get_embedding(vector_text)
-
                 if existing:
-                    existing.vector_text = vector_text
+                    existing.vector_text = base_text
                     existing.vector = vec
+                    existing.aliases = aliases
                     action = "Обновляется"
                 else:
                     device = Device(
                         model=model,
-                        vector_text=vector_text,
+                        vector_text=base_text,
                         vector=vec,
+                        aliases=aliases,
                     )
                     session.add(device)
                     action = "Добавлена новая"

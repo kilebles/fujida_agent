@@ -53,6 +53,7 @@ class SpecsSearch:
         return {
             "models": [r.model for r in rows],
             "descriptions": [r.vector_text for r in rows],
+            "aliases": [r.aliases or [] for r in rows],
         }
 
 
