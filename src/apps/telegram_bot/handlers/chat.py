@@ -52,10 +52,7 @@ async def handle_chat(message: Message):
                     for m, d in zip(data["models"], data["descriptions"])
                 )
             else:
-                answer = await answer_service.generate(
-                    user_message,
-                    "Информации в базе нет, но можно подсказать обратиться в поддержку."
-                )
+                answer = await answer_service.fallback(user_message)
                 await delete_message(typing_msg, delay=0)
                 return await message.answer(sanitize_telegram_html(answer))
 
