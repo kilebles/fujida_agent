@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     POSTGRES_HOST: str
     POSTGRES_PORT: int = 5432
     DATABASE_URL: str
+    
+    GOOGLE_SHEETS_CREDS: str
+    GOOGLE_SHEETS_NAME: str
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

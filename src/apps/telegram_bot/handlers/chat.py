@@ -10,10 +10,14 @@ from apps.knowledge_base.services.specs_search import SpecsSearch
 from apps.knowledge_base.services.answer_service import AnswerService
 from utils.telegram import delete_message
 from utils.text import sanitize_telegram_html
+from utils.google_sheets import GoogleSheetsLogger
+from logger.config import get_logger
 
 router = Router()
 intent_router = IntentRouter()
 answer_service = AnswerService(model="gpt-4o")
+sheets_logger = GoogleSheetsLogger()
+logger = get_logger(__name__)
 
 
 async def keep_typing(message: Message, stop_event: asyncio.Event):
@@ -88,3 +92,8 @@ async def handle_chat(message: Message):
 
     await delete_message(typing_msg, delay=0)
     await message.answer(sanitize_telegram_html(answer))
+
+    try:
+        sheets_logger.log_message(user_message, answer, source="telegram")
+    except Exception as e:
+        logger.error("Ошибка логирования в Google Sheets", exc_info=e)

@@ -5,6 +5,7 @@ venv/
 
 .env
 .coverage
+/keys
 
 logs/
 .format.log

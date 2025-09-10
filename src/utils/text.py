@@ -50,6 +50,14 @@ def _cleanup_markdown(text: str) -> str:
     return text
 
 
+def strip_all_tags(text: str) -> str:
+    """
+    Убирает все HTML-теги, оставляя только текстовое содержимое.
+    """
+    soup = BeautifulSoup(text, "html.parser")
+    return soup.get_text(" ", strip=True)
+
+
 def sanitize_telegram_html(text: str) -> str:
     """
     Убирает markdown-артефакты и чистит HTML для Telegram.
