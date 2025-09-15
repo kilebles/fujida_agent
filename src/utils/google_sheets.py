@@ -21,9 +21,10 @@ class GoogleSheetsLogger:
         ]
         creds = ServiceAccountCredentials.from_json_keyfile_name(creds_path, scope)
         client = gspread.authorize(creds)
+        sh = client.open(sheet_name)
 
         try:
-            self.sheet = client.open(sheet_name).sheet1
+            self.sheet = sh.worksheet("FujidaChatLog")
             logger.info("Google Sheets подключен, используем таблицу: %s", sheet_name)
         except Exception as e:
             logger.error("Не удалось открыть таблицу Google Sheets: %s", sheet_name, exc_info=e)
