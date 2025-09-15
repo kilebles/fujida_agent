@@ -24,7 +24,7 @@ class GoogleSheetsLogger:
         sh = client.open(sheet_name)
 
         try:
-            self.sheet = sh.worksheet("FujidaChatLog")
+            self.sheet = sh.worksheet("Логи")
             logger.info("Google Sheets подключен, используем таблицу: %s", sheet_name)
         except Exception as e:
             logger.error("Не удалось открыть таблицу Google Sheets: %s", sheet_name, exc_info=e)
