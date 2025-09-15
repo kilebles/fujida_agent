@@ -5,6 +5,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from settings import config
 from apps.telegram_bot.handlers import start
 from apps.telegram_bot.handlers import chat
+from apps.telegram_bot.handlers import help
 from logger.middlewares.aiogram import TelegramContextMiddleware
 
 bot = Bot(
@@ -16,4 +17,5 @@ dp = Dispatcher(storage=MemoryStorage())
 dp.update.outer_middleware(TelegramContextMiddleware())
 
 dp.include_router(start.router)
+dp.include_router(help.router)
 dp.include_router(chat.router)

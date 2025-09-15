@@ -2,6 +2,7 @@ import asyncio
 from aiogram import Router
 from aiogram.types import Message
 from aiogram.enums import ChatAction
+from aiogram.filters import Command
 
 from apps.knowledge_base.intent_router import IntentRouter
 from db.session import async_session_maker
@@ -39,7 +40,7 @@ def filter_models(user_message: str, models: list[str], descriptions: list[str],
     return selected
 
 
-@router.message()
+@router.message(~Command(commands=["start", "help"]))
 async def handle_chat(message: Message):
     user_message = message.text.strip()
     typing_msg = await message.answer("📝")

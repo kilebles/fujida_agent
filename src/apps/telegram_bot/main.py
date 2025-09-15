@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from settings import config
 from apps.telegram_bot.dispatcher import bot
 from apps.telegram_bot.router import router as telegram_router
-from apps.telegram_bot.commands.start import set_default_commands
+from apps.telegram_bot.commands.commands import set_default_commands
 from logger import setup_logging, get_logger
 from logger.middlewares.fastapi import RequestContextMiddleware, AccessLogMiddleware
 from common.openai_client import init_openai_client, warmup_openai, close_openai_client

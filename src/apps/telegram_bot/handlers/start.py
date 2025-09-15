@@ -8,7 +8,7 @@ from aiogram.types import ReplyKeyboardRemove
 from db.session import async_session_maker
 from apps.telegram_bot.states.registration import Registration
 from apps.telegram_bot.keyboards.phone_kb import get_phone_kb
-from apps.telegram_bot.services.start_service import get_user_by_id, save_user_phone, has_user_phone
+from apps.telegram_bot.services.start_service import save_user_phone, has_user_phone
 from utils.phone_validation import is_valid_phone
 from utils.telegram import delete_message
 from logger import get_logger
