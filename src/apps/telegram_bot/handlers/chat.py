@@ -72,13 +72,14 @@ async def handle_chat(message: Message):
 
                 if selected:
                     context = "\n\n".join(
-                        f"Модель: {m}\nОписание: {d}"
-                        for m, d in selected
+                        f"Модель: {m}\nАлиасы: {', '.join(a or [])}\nОписание: {d}"
+                        for m, d, a in zip(data["models"], data["descriptions"], data["aliases"])
+                        if (m, d) in selected
                     )
                 else:
                     context = "\n\n".join(
-                        f"Модель: {m}\nОписание: {d}"
-                        for m, d in zip(data["models"][:7], data["descriptions"][:7])
+                        f"Модель: {m}\nАлиасы: {', '.join(a or [])}\nОписание: {d}"
+                        for m, d, a in zip(data["models"][:7], data["descriptions"][:7], data["aliases"][:7])
                     )
             else:
                 answer = await answer_service.fallback(user_message)
