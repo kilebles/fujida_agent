@@ -1,7 +1,0 @@
-services:
-  telegram-bot:
-    volumes:
-      - .:/app:delegated
-    environment:
-      ENV: dev
-      LOG_LEVEL: debug

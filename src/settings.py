@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     TELEGRAM_BOT_TOKEN: str
     OPENAI_API_KEY: str | None = None
     WEBHOOK_URL: str
-
+    
     POSTGRES_DB: str
     POSTGRES_USER: str
     POSTGRES_PASSWORD: str
@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     
     GOOGLE_SHEETS_CREDS: str
     GOOGLE_SHEETS_NAME: str
+    
+    GREEN_API_URL: str
+    GREEN_API_INSTANCE_ID: int
+    GREEN_API_TOKEN: str
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

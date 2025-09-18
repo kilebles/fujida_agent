@@ -22,7 +22,7 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  telegram-bot:
+  bot:
     build:
       context: .
       dockerfile: Dockerfile
@@ -38,7 +38,7 @@ services:
     command:
       [
         "uvicorn",
-        "src.apps.telegram_bot.main:app",
+        "src.apps.main:app",
         "--host","0.0.0.0",
         "--port","8080",
         "--no-access-log",
