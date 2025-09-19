@@ -7,7 +7,7 @@ from aiogram.filters import Command
 from apps.knowledge_base.intent_router import IntentRouter
 from db.session import async_session_maker
 from apps.knowledge_base.services.faq_search import FAQSearch
-from apps.knowledge_base.services.specs_search import SpecsSearch
+from apps.knowledge_base.services.specs_search import SpecsSearch, normalize_text
 from apps.knowledge_base.services.answer_service import AnswerService
 from utils.telegram import delete_message
 from utils.text import sanitize_telegram_html
@@ -31,12 +31,12 @@ async def keep_typing(message: Message, stop_event: asyncio.Event):
 
 
 def filter_models(user_message: str, models: list[str], descriptions: list[str], aliases: list[list[str]]):
-    msg = user_message.lower()
+    msg = normalize_text(user_message)
     selected = []
     for m, d, a in zip(models, descriptions, aliases):
-        names = [m.lower()] + [al.lower() for al in (a or [])]
+        names = [normalize_text(m)] + [normalize_text(al) for al in (a or [])]
         if any(name in msg for name in names):
-            selected.append((m, d))
+            selected.append((m, d, a))
     return selected
 
 
@@ -73,13 +73,16 @@ async def handle_chat(message: Message):
                 if selected:
                     context = "\n\n".join(
                         f"Модель: {m}\nАлиасы: {', '.join(a or [])}\nОписание: {d}"
-                        for m, d, a in zip(data["models"], data["descriptions"], data["aliases"])
-                        if (m, d) in selected
+                        for m, d, a in selected
                     )
                 else:
                     context = "\n\n".join(
                         f"Модель: {m}\nАлиасы: {', '.join(a or [])}\nОписание: {d}"
-                        for m, d, a in zip(data["models"][:7], data["descriptions"][:7], data["aliases"][:7])
+                        for m, d, a in zip(
+                            data["models"][:7],
+                            data["descriptions"][:7],
+                            data["aliases"][:7],
+                        )
                     )
             else:
                 answer = await answer_service.fallback(user_message)
