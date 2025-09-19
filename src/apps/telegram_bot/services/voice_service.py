@@ -1,35 +1,114 @@
-import httpx
-
-from io import BytesIO
+import asyncio
+from aiogram import Router, F
 from aiogram.types import Message
-from pydub import AudioSegment
-from pydub.utils import which
+from aiogram.enums import ChatAction
+from aiogram.filters import Command
 
-from common.openai_client import openai_client
+from apps.knowledge_base.intent_router import IntentRouter
+from db.session import async_session_maker
+from apps.knowledge_base.services.faq_search import FAQSearch
+from apps.knowledge_base.services.specs_search import SpecsSearch, normalize_text
+from apps.knowledge_base.services.answer_service import AnswerService
+from apps.telegram_bot.services.voice_service import transcribe_voice
+from utils.telegram import delete_message
+from utils.text import sanitize_telegram_html
+from utils.google_sheets import GoogleSheetsLogger
+from logger.config import get_logger
 
-AudioSegment.converter = which("ffmpeg")
+router = Router()
+intent_router = IntentRouter()
+answer_service = AnswerService(model="gpt-4o")
+sheets_logger = GoogleSheetsLogger()
+logger = get_logger(__name__)
 
 
-async def transcribe_voice(message: Message) -> str:
-    """
-    Транскрибация голосовых сообщений с помощью ffmpeg и whisper.
-    """
-    file_info = await message.bot.get_file(message.voice.file_id)
-    file_url = f"https://api.telegram.org/file/bot{message.bot.token}/{file_info.file_path}"
+async def keep_typing(message: Message, stop_event: asyncio.Event):
+    while not stop_event.is_set():
+        await message.bot.send_chat_action(message.chat.id, ChatAction.TYPING)
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=4.0)
+        except asyncio.TimeoutError:
+            continue
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(file_url)
-        voice_data = BytesIO(response.content)
 
-    audio = AudioSegment.from_file(voice_data, format="ogg")
-    mp3_data = BytesIO()
-    audio.export(mp3_data, format="mp3")
-    mp3_data.seek(0)
-    mp3_data.name = "voice.mp3"
+def filter_models(user_message: str, models: list[str], descriptions: list[str], aliases: list[list[str]]):
+    msg = normalize_text(user_message)
+    selected = []
+    for m, d, a in zip(models, descriptions, aliases):
+        names = [normalize_text(m)] + [normalize_text(al) for al in (a or [])]
+        if any(name in msg for name in names):
+            selected.append((m, d, a))
+    return selected
 
-    transcription = await openai_client.audio.transcriptions.create(
-        model="whisper-1",
-        file=mp3_data,
-    )
 
-    return transcription.text
+@router.message((F.text | F.voice) & ~Command(commands=["start", "help"]))
+async def handle_chat(message: Message):
+    if message.text:
+        user_message = message.text.strip()
+    elif message.voice:
+        try:
+            user_message = await transcribe_voice(message)
+        except Exception as e:
+            logger.error("Ошибка транскрибации голосового сообщения", exc_info=e)
+            return await message.answer("Извините, мне не удалось распознать голосовое сообщение :)")
+    else:
+        return await message.answer("Извините, я не могу это прочитать.")
+
+    typing_msg = await message.answer("📝")
+    stop_event = asyncio.Event()
+    typing_task = asyncio.create_task(keep_typing(message, stop_event))
+
+    try:
+        intent = await intent_router.classify(user_message)
+
+        async with async_session_maker() as session:
+            if intent == "FAQ":
+                search = FAQSearch(session)
+                data = await search.top_faq_json(user_message, top_n=3)
+                context = "\n\n".join(
+                    f"Q: {q}\nA: {a}"
+                    for q, a in zip(data["top_questions"], data["top_answers"])
+                )
+            elif intent == "Device":
+                search = SpecsSearch(session)
+                data = await search.top_devices_json(user_message, top_n=15)
+
+                selected = filter_models(
+                    user_message,
+                    data["models"],
+                    data["descriptions"],
+                    data["aliases"],
+                )
+
+                if selected:
+                    context = "\n\n".join(
+                        f"Модель: {m}\nАлиасы: {', '.join(a or [])}\nОписание: {d}"
+                        for m, d, a in selected
+                    )
+                else:
+                    context = "\n\n".join(
+                        f"Модель: {m}\nАлиасы: {', '.join(a or [])}\nОписание: {d}"
+                        for m, d, a in zip(
+                            data["models"][:7],
+                            data["descriptions"][:7],
+                            data["aliases"][:7],
+                        )
+                    )
+            else:
+                answer = await answer_service.fallback(user_message)
+                await delete_message(typing_msg, delay=0)
+                return await message.answer(sanitize_telegram_html(answer))
+
+        answer = await answer_service.generate(user_message, context, intent)
+
+    finally:
+        stop_event.set()
+        typing_task.cancel()
+
+    await delete_message(typing_msg, delay=0)
+    await message.answer(sanitize_telegram_html(answer))
+
+    try:
+        sheets_logger.log_message(user_message, answer, source="telegram")
+    except Exception as e:
+        logger.error("Ошибка логирования в Google Sheets", exc_info=e)
