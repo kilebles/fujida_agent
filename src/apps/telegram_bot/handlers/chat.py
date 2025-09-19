@@ -2,7 +2,6 @@ import asyncio
 from aiogram import Router, F
 from aiogram.types import Message
 from aiogram.enums import ChatAction
-from aiogram.filters import Command
 
 from apps.knowledge_base.intent_router import IntentRouter
 from db.session import async_session_maker
@@ -41,7 +40,7 @@ def filter_models(user_message: str, models: list[str], descriptions: list[str],
     return selected
 
 
-@router.message((F.text | F.voice) & ~Command(commands=["start", "help"]))
+@router.message(F.text | F.voice)
 async def handle_chat(message: Message):
     if message.text:
         user_message = message.text.strip()
@@ -49,10 +48,10 @@ async def handle_chat(message: Message):
         try:
             user_message = await transcribe_voice(message)
         except Exception as e:
-            logger.error("Ошибка транскрибации голосового сообщения", exc_info=e)
-            return await message.answer("Извините, мне не удалось распознать голосовое сообщение :)")
+            logger.error("Ошибка транскрибации голоса", exc_info=e)
+            return await message.answer("❌ Не удалось распознать голосовое сообщение")
     else:
-        return await message.answer("Извините, я не могу это прочитать.")
+        return await message.answer("❌ Сообщение не распознано")
 
     typing_msg = await message.answer("📝")
     stop_event = asyncio.Event()
@@ -101,6 +100,9 @@ async def handle_chat(message: Message):
 
         answer = await answer_service.generate(user_message, context, intent)
 
+    except Exception as e:
+        logger.error("Ошибка обработки сообщения", exc_info=e)
+        answer = "⚠️ Что-то пошло не так. Попробуй ещё раз."
     finally:
         stop_event.set()
         typing_task.cancel()
