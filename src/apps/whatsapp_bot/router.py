@@ -1,10 +1,11 @@
+import re
+
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from apps.knowledge_base.services.answer_service import AnswerService
 from utils.google_sheets import GoogleSheetsLogger
 from logger import get_logger
 from .services import send_whatsapp_message
-import re
 
 router = APIRouter()
 logger = get_logger(__name__)

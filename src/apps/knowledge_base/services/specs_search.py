@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, List
 
 from sqlalchemy import select, func, cast
@@ -13,6 +14,19 @@ _EMBEDDING_MODEL = "text-embedding-3-large"
 _specs_search_cached: SpecsSearch | None = None
 
 
+def normalize_text(text: str) -> str:
+    """
+    Нормализует ввод пользователя и алиасы для поиска:
+    - переводит в нижний регистр,
+    - заменяет дефисы/подчёркивания на пробелы,
+    - удаляет лишние пробелы.
+    """
+    text = text.lower()
+    text = re.sub(r"[-_]", " ", text)
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+
 class SpecsSearch:
     """
     Семантический поиск по устройствам Fujida с выдачей топ-N моделей.
@@ -23,12 +37,13 @@ class SpecsSearch:
 
     async def _embed(self, text: str) -> list[float]:
         """
-        Возвращает эмбеддинг текста фиксированной длины 3072.
+        Возвращает эмбеддинг нормализованного текста фиксированной длины 3072.
         """
         client = await ensure_openai_client()
+        norm_text = normalize_text(text or "")
         resp = await client.embeddings.create(
             model=_EMBEDDING_MODEL,
-            input=text or "",
+            input=norm_text,
         )
         return resp.data[0].embedding
 
@@ -53,7 +68,7 @@ class SpecsSearch:
         return {
             "models": [r.model for r in rows],
             "descriptions": [r.vector_text for r in rows],
-            "aliases": [r.aliases or [] for r in rows],
+            "aliases": [[normalize_text(a) for a in (r.aliases or [])] for r in rows],
         }
 
 
