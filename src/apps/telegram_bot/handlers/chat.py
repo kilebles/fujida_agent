@@ -9,6 +9,7 @@ from db.session import async_session_maker
 from apps.knowledge_base.services.faq_search import FAQSearch
 from apps.knowledge_base.services.specs_search import SpecsSearch, normalize_text
 from apps.knowledge_base.services.answer_service import AnswerService
+from apps.telegram_bot.services.voice_service import transcribe_voice
 from utils.telegram import delete_message
 from utils.text import sanitize_telegram_html
 from utils.google_sheets import GoogleSheetsLogger
@@ -40,9 +41,7 @@ def filter_models(user_message: str, models: list[str], descriptions: list[str],
     return selected
 
 
-@router.message(~Command(commands=["start", "help"]))
-async def handle_chat(message: Message):
-    user_message = message.text.strip()
+async def process_user_message(message: Message, user_message: str):
     typing_msg = await message.answer("📝")
 
     stop_event = asyncio.Event()
@@ -102,3 +101,24 @@ async def handle_chat(message: Message):
         sheets_logger.log_message(user_message, answer, source="telegram")
     except Exception as e:
         logger.error("Ошибка логирования в Google Sheets", exc_info=e)
+
+
+@router.message(~Command(commands=["start", "help"]))
+async def handle_chat(message: Message):
+    if not message.text:
+        return await message.answer("❌ Сообщение не распознано")
+    user_message = message.text.strip()
+    return await process_user_message(message, user_message)
+
+
+@router.message(lambda m: m.voice is not None)
+async def handle_voice(message: Message):
+    typing_msg = await message.answer("🎤 Распознаю голос...")
+    try:
+        text = await transcribe_voice(message)
+        await delete_message(typing_msg, delay=0)
+        return await process_user_message(message, text)
+    except Exception as e:
+        await delete_message(typing_msg, delay=0)
+        await message.answer("❌ Ошибка при распознавании голоса")
+        logger.error("Ошибка обработки голосового", exc_info=e)
