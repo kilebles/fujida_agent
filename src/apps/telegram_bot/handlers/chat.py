@@ -1,5 +1,5 @@
 import asyncio
-from aiogram import Router
+from aiogram import Router, F
 from aiogram.types import Message
 from aiogram.enums import ChatAction
 from aiogram.filters import Command
@@ -41,9 +41,20 @@ def filter_models(user_message: str, models: list[str], descriptions: list[str],
     return selected
 
 
-async def process_user_message(message: Message, user_message: str):
-    typing_msg = await message.answer("📝")
+@router.message((F.text | F.voice) & ~Command(commands=["start", "help"]))
+async def handle_chat(message: Message):
+    if message.text:
+        user_message = message.text.strip()
+    elif message.voice:
+        try:
+            user_message = await transcribe_voice(message)
+        except Exception as e:
+            logger.error("Ошибка транскрибации голосового сообщения", exc_info=e)
+            return await message.answer("Извините, мне не удалось распознать голосовое сообщение :)")
+    else:
+        return await message.answer("Извините, я не могу это прочитать.")
 
+    typing_msg = await message.answer("📝")
     stop_event = asyncio.Event()
     typing_task = asyncio.create_task(keep_typing(message, stop_event))
 
@@ -101,24 +112,3 @@ async def process_user_message(message: Message, user_message: str):
         sheets_logger.log_message(user_message, answer, source="telegram")
     except Exception as e:
         logger.error("Ошибка логирования в Google Sheets", exc_info=e)
-
-
-@router.message(~Command(commands=["start", "help"]))
-async def handle_chat(message: Message):
-    if not message.text:
-        return await message.answer("❌ Сообщение не распознано")
-    user_message = message.text.strip()
-    return await process_user_message(message, user_message)
-
-
-@router.message(lambda m: m.voice is not None)
-async def handle_voice(message: Message):
-    typing_msg = await message.answer("🎤 Распознаю голос...")
-    try:
-        text = await transcribe_voice(message)
-        await delete_message(typing_msg, delay=0)
-        return await process_user_message(message, text)
-    except Exception as e:
-        await delete_message(typing_msg, delay=0)
-        await message.answer("❌ Ошибка при распознавании голоса")
-        logger.error("Ошибка обработки голосового", exc_info=e)
