@@ -6,7 +6,7 @@ from aiogram.enums import ChatAction
 from apps.knowledge_base.intent_router import IntentRouter
 from db.session import async_session_maker
 from apps.knowledge_base.services.faq_search import FAQSearch
-from apps.knowledge_base.services.specs_search import SpecsSearch, normalize_text
+from apps.knowledge_base.services.specs_search import SpecsSearch
 from apps.knowledge_base.services.answer_service import AnswerService
 from apps.telegram_bot.services.voice_service import transcribe_voice
 from utils.telegram import delete_message
@@ -28,16 +28,6 @@ async def keep_typing(message: Message, stop_event: asyncio.Event):
             await asyncio.wait_for(stop_event.wait(), timeout=4.0)
         except asyncio.TimeoutError:
             continue
-
-
-def filter_models(user_message: str, models: list[str], descriptions: list[str], aliases: list[list[str]]):
-    msg = normalize_text(user_message)
-    selected = []
-    for m, d, a in zip(models, descriptions, aliases):
-        names = [normalize_text(m)] + [normalize_text(al) for al in (a or [])]
-        if any(name in msg for name in names):
-            selected.append((m, d, a))
-    return selected
 
 
 @router.message(F.text | F.voice)
@@ -69,30 +59,8 @@ async def handle_chat(message: Message):
                     for q, a in zip(data["top_questions"], data["top_answers"])
                 )
             elif intent == "Device":
-                search = SpecsSearch(session)
-                data = await search.top_devices_json(user_message, top_n=15)
-
-                selected = filter_models(
-                    user_message,
-                    data["models"],
-                    data["descriptions"],
-                    data["aliases"],
-                )
-
-                if selected:
-                    context = "\n\n".join(
-                        f"Модель: {m}\nАлиасы: {', '.join(a or [])}\nОписание: {d}"
-                        for m, d, a in selected
-                    )
-                else:
-                    context = "\n\n".join(
-                        f"Модель: {m}\nАлиасы: {', '.join(a or [])}\nОписание: {d}"
-                        for m, d, a in zip(
-                            data["models"][:7],
-                            data["descriptions"][:7],
-                            data["aliases"][:7],
-                        )
-                    )
+                search = SpecsSearch()
+                context = search.all_devices_json()
             else:
                 answer = await answer_service.fallback(user_message)
                 await delete_message(typing_msg, delay=0)
