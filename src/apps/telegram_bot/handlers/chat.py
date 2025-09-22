@@ -1,4 +1,5 @@
 import asyncio
+
 from aiogram import Router, F
 from aiogram.types import Message
 from aiogram.enums import ChatAction
@@ -6,13 +7,16 @@ from aiogram.enums import ChatAction
 from apps.knowledge_base.intent_router import IntentRouter
 from db.session import async_session_maker
 from apps.knowledge_base.services.faq_search import FAQSearch
-from apps.knowledge_base.services.specs_search import SpecsSearch
+from apps.knowledge_base.services.device_search import DeviceSelector
 from apps.knowledge_base.services.answer_service import AnswerService
 from apps.telegram_bot.services.voice_service import transcribe_voice
 from utils.telegram import delete_message
 from utils.text import sanitize_telegram_html
 from utils.google_sheets import GoogleSheetsLogger
 from logger.config import get_logger
+
+import json
+from pathlib import Path
 
 router = Router()
 intent_router = IntentRouter()
@@ -28,6 +32,16 @@ async def keep_typing(message: Message, stop_event: asyncio.Event):
             await asyncio.wait_for(stop_event.wait(), timeout=4.0)
         except asyncio.TimeoutError:
             continue
+
+
+def _load_devices_json() -> list[dict]:
+    path = Path(__file__).resolve().parents[3] / "common" / "devices.json"
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _filter_devices_by_ids(all_devices: list[dict], device_ids: list[str]) -> list[dict]:
+    return [d for d in all_devices if d.get("id") in device_ids]
 
 
 @router.message(F.text | F.voice)
@@ -59,8 +73,18 @@ async def handle_chat(message: Message):
                     for q, a in zip(data["top_questions"], data["top_answers"])
                 )
             elif intent == "Device":
-                search = SpecsSearch()
-                context = search.all_devices_json()
+                selector = DeviceSelector()
+                selection = await selector.select(user_message)
+
+                all_devices = _load_devices_json()
+                devices_data = _filter_devices_by_ids(all_devices, selection.get("device_ids", []))
+
+                context = {
+                    "selection": selection,
+                    "devices": devices_data,
+                }
+            elif intent == "Specs":
+                context = {"message": "Поиск по характеристикам в разработке."}
             else:
                 answer = await answer_service.fallback(user_message)
                 await delete_message(typing_msg, delay=0)
