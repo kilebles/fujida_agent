@@ -12,9 +12,12 @@ logger = get_logger(__name__)
 FAQ_SYSTEM_PROMPT = """
 Ты — сотрудник поддержки Fujida. Отвечаешь как человек: просто и по делу.
 Не используй вводные фразы вроде: "ниже ответ", "вы можете воспользоваться", "воспользуйтесь следующими способами".
-Логически разделяй текст на абзацы, отвечай лаконично, связно и последовательно. 
+Логически разделяй текст на абзацы, отвечай лаконично, связно и последовательно.
 
-Важно: GPS определяет где находятся камеры, мы не решаем вопросы навигации.
+
+Важно:
+- НЕ ОТВЕЧАЙ ТОГО, ЧЕГО НЕТ В ВОПРОСЕ ПОЛЬЗОВАТЕЛЯ!
+- GPS определяет где находятся камеры, мы не решаем вопросы навигации.
 """
 
 DEVICE_SYSTEM_PROMPT = """
@@ -36,6 +39,11 @@ DEVICE_SYSTEM_PROMPT = """
    • «Гарантия: N лет/год.»  
    • Если в данных есть поле "ссылка" — отдай её как HTML: <a href="...">Страница модели</a>.  
    • Никогда не выдумывай ссылки и не пиши их текст без адреса. Если ссылки нет — просто не указывай её.
+11. Ты работаешь ТОЛЬКО с устройствами Fujida.
+• Если пользователь упомянул устройства других брендов, просто игнорируй их.
+• В ответе вежливо уточни, что мы консультируем только по технике Fujida.
+• Если вместе с другими брендами названы устройства Fujida, отвечай только по Fujida.
+• Никогда не выдумывай чужие модели.
 
 Пример при сравнении устройств:
 «Fujida Karma Pro S WiFi и Fujida Karma Pro Max Duo WiFi — это комбо-устройства, которые объединяют в себе функции видеорегистратора, GPS-информера и радар-детектора.
@@ -112,25 +120,47 @@ class AnswerService:
     def __init__(self, model: str = "gpt-4o") -> None:
         self._model = model
 
+    def _build_faq_context(self, user_message: str, data: dict) -> str:
+        if "exact_match" in data:
+            return f"""
+                Вопрос пользователя:
+                "{user_message}"
+
+                Наиболее подходящий ответ из базы знаний:
+                Q: {data['exact_match']['question']}
+                A: {data['exact_match']['answer']}
+                """
+        else:
+            variants = "\n\n".join(
+                f"{i+1}. Q: {q}\n   A: {a}"
+                for i, (q, a) in enumerate(zip(data["top_questions"], data["top_answers"]))
+            )
+            return f"""
+                Вопрос пользователя:
+                "{user_message}"
+
+                Возможные ответы из базы знаний:
+                {variants}
+
+                Инструкция: выбери только один ответ, который максимально соответствует запросу пользователя. 
+                Не смешивай ответы, не сокращай факты, сохрани все ссылки.
+                """
+
     async def generate(self, user_message: str, context: Union[str, dict, list], intent: str) -> str:
         if intent == "FAQ":
             system_prompt = FAQ_SYSTEM_PROMPT
+            context_str = self._build_faq_context(user_message, context)
         elif intent == "Device":
             system_prompt = DEVICE_SYSTEM_PROMPT
+            context_str = json.dumps(context, ensure_ascii=False)
         elif intent == "Specs":
             system_prompt = SPECS_SYSTEM_PROMPT
+            context_str = str(context or "")
         else:
             system_prompt = OTHER_SYSTEM_PROMPT
-
-        if isinstance(context, (dict, list)):
-            context_str = json.dumps(context, ensure_ascii=False)
-        else:
             context_str = str(context or "")
 
         prompt = f"""
-            Сообщение пользователя: "{user_message}"
-
-            Данные для ответа:
             {context_str}
             """.strip()
 
@@ -144,10 +174,17 @@ class AnswerService:
                      len(system_prompt), len(prompt))
 
         client = await ensure_openai_client()
-        resp = await client.responses.create(
-            model=self._model,
-            input=inputs,
-        )
+        if intent == "FAQ":
+            resp = await client.responses.create(
+                model=self._model,
+                input=inputs,
+                temperature=0.6,
+            )
+        else:
+            resp = await client.responses.create(
+                model=self._model,
+                input=inputs,
+            )
         raw = resp.output_text.strip()
         return _postprocess_answer(raw)
 

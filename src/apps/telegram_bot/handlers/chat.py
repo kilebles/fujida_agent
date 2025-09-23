@@ -67,11 +67,8 @@ async def handle_chat(message: Message):
         async with async_session_maker() as session:
             if intent == "FAQ":
                 search = FAQSearch(session)
-                data = await search.top_faq_json(user_message, top_n=3)
-                context = "\n\n".join(
-                    f"Q: {q}\nA: {a}"
-                    for q, a in zip(data["top_questions"], data["top_answers"])
-                )
+                context = await search.top_faq_json(user_message, top_n=3)
+
             elif intent == "Device":
                 selector = DeviceSelector()
                 selection = await selector.select(user_message)
@@ -83,8 +80,10 @@ async def handle_chat(message: Message):
                     "selection": selection,
                     "devices": devices_data,
                 }
+
             elif intent == "Specs":
                 context = {"message": "Поиск по характеристикам в разработке."}
+
             else:
                 answer = await answer_service.fallback(user_message)
                 await delete_message(typing_msg, delay=0)
