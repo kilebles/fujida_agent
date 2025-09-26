@@ -1,4 +1,6 @@
 import asyncio
+import json
+from pathlib import Path
 
 from aiogram import Router, F
 from aiogram.types import Message
@@ -9,20 +11,20 @@ from db.session import async_session_maker
 from apps.knowledge_base.services.faq_search import FAQSearch
 from apps.knowledge_base.services.device_search import DeviceSelector
 from apps.knowledge_base.services.answer_service import AnswerService
+from apps.knowledge_base.services.dialog_history import DialogHistory
 from apps.telegram_bot.services.voice_service import transcribe_voice
 from utils.telegram import delete_message
 from utils.text import sanitize_telegram_html
 from utils.google_sheets import GoogleSheetsLogger
 from logger.config import get_logger
 
-import json
-from pathlib import Path
-
 router = Router()
 intent_router = IntentRouter()
 answer_service = AnswerService(model="gpt-4o")
 sheets_logger = GoogleSheetsLogger()
 logger = get_logger(__name__)
+
+history = DialogHistory(max_messages=20)
 
 
 async def keep_typing(message: Message, stop_event: asyncio.Event):
@@ -61,6 +63,9 @@ async def handle_chat(message: Message):
     stop_event = asyncio.Event()
     typing_task = asyncio.create_task(keep_typing(message, stop_event))
 
+    chat_id = str(message.chat.id)
+    past_messages = await history.get(chat_id)
+
     try:
         intent = await intent_router.classify(user_message)
 
@@ -74,7 +79,9 @@ async def handle_chat(message: Message):
                 selection = await selector.select(user_message)
 
                 all_devices = _load_devices_json()
-                devices_data = _filter_devices_by_ids(all_devices, selection.get("device_ids", []))
+                devices_data = _filter_devices_by_ids(
+                    all_devices, selection.get("device_ids", [])
+                )
 
                 context = {
                     "selection": selection,
@@ -85,11 +92,20 @@ async def handle_chat(message: Message):
                 context = {"message": "Поиск по характеристикам в разработке."}
 
             else:
-                answer = await answer_service.fallback(user_message)
+                answer = await answer_service.fallback(
+                    user_message, past_messages=past_messages
+                )
+                await history.add(chat_id, "user", user_message)
+                await history.add(chat_id, "assistant", answer)
                 await delete_message(typing_msg, delay=0)
                 return await message.answer(sanitize_telegram_html(answer))
 
-        answer = await answer_service.generate(user_message, context, intent)
+        answer = await answer_service.generate(
+            user_message, context, intent, past_messages=past_messages
+        )
+
+        await history.add(chat_id, "user", user_message)
+        await history.add(chat_id, "assistant", answer)
 
     except Exception as e:
         logger.error("Ошибка обработки сообщения", exc_info=e)

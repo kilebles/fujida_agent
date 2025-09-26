@@ -135,23 +135,28 @@ class AnswerService:
                 Q: {data['exact_match']['question']}
                 A: {data['exact_match']['answer']}
                 """
-        else:
-            variants = "\n\n".join(
-                f"{i+1}. Q: {q}\n   A: {a}"
-                for i, (q, a) in enumerate(zip(data["top_questions"], data["top_answers"]))
-            )
-            return f"""
-                Вопрос пользователя:
-                "{user_message}"
+        variants = "\n\n".join(
+            f"{i+1}. Q: {q}\n   A: {a}"
+            for i, (q, a) in enumerate(zip(data["top_questions"], data["top_answers"]))
+        )
+        return f"""
+            Вопрос пользователя:
+            "{user_message}"
 
-                Возможные ответы из базы знаний:
-                {variants}
+            Возможные ответы из базы знаний:
+            {variants}
 
-                Инструкция: выбери только один ответ, который максимально соответствует запросу пользователя. 
-                Не смешивай ответы, не сокращай факты, сохрани все ссылки.
-                """
+            Инструкция: выбери только один ответ, который максимально соответствует запросу пользователя. 
+            Не смешивай ответы, не сокращай факты, сохрани все ссылки.
+            """
 
-    async def generate(self, user_message: str, context: Union[str, dict, list], intent: str) -> str:
+    async def generate(
+        self,
+        user_message: str,
+        context: Union[str, dict, list],
+        intent: str,
+        past_messages: list[dict] | None = None,
+    ) -> str:
         if intent == "FAQ":
             system_prompt = FAQ_SYSTEM_PROMPT
             context_str = self._build_faq_context(user_message, context)
@@ -165,18 +170,20 @@ class AnswerService:
             system_prompt = OTHER_SYSTEM_PROMPT
             context_str = str(context or "")
 
-        prompt = f"""
-            {context_str}
-            """.strip()
+        prompt = f"""{context_str}""".strip()
 
-        inputs = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": prompt},
-        ]
+        inputs = [{"role": "system", "content": system_prompt}]
+        if past_messages:
+            inputs.extend(past_messages)
+        inputs.append({"role": "user", "content": prompt})
 
         logger.info("AnswerService.generate inputs=%s", json.dumps(inputs, ensure_ascii=False))
-        logger.info("AnswerService.generate system_prompt_len=%d user_prompt_len=%d",
-                     len(system_prompt), len(prompt))
+        logger.info(
+            "AnswerService.generate system_prompt_len=%d user_prompt_len=%d history_len=%d",
+            len(system_prompt),
+            len(prompt),
+            len(past_messages) if past_messages else 0,
+        )
 
         client = await ensure_openai_client()
         if intent == "FAQ":
@@ -186,28 +193,34 @@ class AnswerService:
                 temperature=0.6,
             )
         else:
-            resp = await client.responses.create(
-                model=self._model,
-                input=inputs,
-            )
+            resp = await client.responses.create(model=self._model, input=inputs)
+
         raw = resp.output_text.strip()
+        logger.info("AnswerService.generate raw_answer_len=%d", len(raw))
         return _postprocess_answer(raw)
 
-    async def fallback(self, user_message: str) -> str:
+    async def fallback(
+        self,
+        user_message: str,
+        past_messages: list[dict] | None = None,
+    ) -> str:
         prompt = FALLBACK_PROMPT.format(user_message=user_message)
-        inputs = [
-            {"role": "system", "content": FALLBACK_SYSTEM_PROMPT},
-            {"role": "user", "content": prompt},
-        ]
+
+        inputs = [{"role": "system", "content": FALLBACK_SYSTEM_PROMPT}]
+        if past_messages:
+            inputs.extend(past_messages)
+        inputs.append({"role": "user", "content": prompt})
 
         logger.info("AnswerService.fallback inputs=%s", json.dumps(inputs, ensure_ascii=False))
-        logger.info("AnswerService.fallback system_prompt_len=%d user_prompt_len=%d",
-                     len(FALLBACK_SYSTEM_PROMPT), len(prompt))
+        logger.info(
+            "AnswerService.fallback system_prompt_len=%d user_prompt_len=%d history_len=%d",
+            len(FALLBACK_SYSTEM_PROMPT),
+            len(prompt),
+            len(past_messages) if past_messages else 0,
+        )
 
         client = await ensure_openai_client()
-        resp = await client.responses.create(
-            model=self._model,
-            input=inputs,
-        )
+        resp = await client.responses.create(model=self._model, input=inputs)
         raw = resp.output_text.strip()
+        logger.info("AnswerService.fallback raw_answer_len=%d", len(raw))
         return _postprocess_answer(raw)

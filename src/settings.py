@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     POSTGRES_HOST: str
     POSTGRES_PORT: int = 5432
     DATABASE_URL: str
+
+    REDIS_URL: str = "redis://redis:6379/0"
     
     GOOGLE_SHEETS_CREDS: str
     GOOGLE_SHEETS_NAME: str
